@@ -12,7 +12,7 @@ DB_PATH = Path("../stocks.db")
 # CRAWL FUNCTIONS
 def crawl_stock(symbol:str, start_date: date, end_date: date):
     stock_hist = yf.Ticker(symbol).history(start=start_date, end=end_date)
-    stock_hist["percent_change"] = stock_hist["Close"].pct_change()
+    # stock_hist["percent_change"] = stock_hist["Close"].pct_change()
     return stock_hist
 
 def crawl_company(symbol:str):
@@ -86,7 +86,7 @@ def upsert_company(company: dict):
         company.get("displayName"),
         company.get("sector"),
         company.get("industry"),
-        company.get("description"),
+        company.get("longBusinessSummary"),
     )
     try:
         with get_db_connection() as conn:
@@ -126,8 +126,9 @@ def get_company(symbol: str):
         return {"status": "Query failed", "error": str(exc)}
 
 # DESCRIPTIVE STATISTIC
-def adaptive_sig(date_start:date, date_end:date, expected_outlier:int = 5):
+def adaptive_sig(date_start:date, date_end:date, expected_outlier_rate:int = 0.25):
     days_between = (date_end - date_start).days
+    expected_outlier = days_between * expected_outlier_rate
     p = expected_outlier / (2 * days_between)
     z = norm.ppf(1 - p)
     return z

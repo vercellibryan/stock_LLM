@@ -61,10 +61,10 @@ def spot_significant_dates(symbol: str, start_date: date, end_date: date, column
         price movements.
     """
     sig = sl.adaptive_sig(start_date, end_date)
-    df_stock = sl.get_stock(symbol, start_date, end_date, increase = increase)
+    df_stock = sl.get_stock(symbol, start_date, end_date)
     if len(df_stock) == 0:
         return {"status": "Failed", "error": "No rows."}
-    return sl.spot_significant_dates(df_stock, column, mean, sig, limit)
+    return sl.spot_significant_dates(df_stock, column, mean, sig, limit, increase)
 
 # FETCH NEWS BASED OF DATES
 FINANCE_PUBLISHERS = ["finance.yahoo.com", "benzinga.com"]
@@ -74,11 +74,11 @@ def get_article_context(symbol: str, start_date: date, end_date: date, col:str =
     Retrieve news articles related to statistically significant stock price
     movements within a specified date range.
 
-    This tool first identifies significant price movements for the stock, then
-    collects news articles published within a configurable window around each
-    significant date. Retrieved articles are enriched with metadata linking them
-    to nearby price movements, making them suitable for explaining potential
-    market catalysts.
+    This tool first identifies significant price movements for the stock (using
+    an adaptive significance threshold scaled to the date range), then collects
+    news articles published within a configurable window around each significant
+    date. Retrieved articles are enriched with metadata linking them to nearby
+    price movements, making them suitable for explaining potential market catalysts.
 
     Use this tool when you need supporting news to explain why a stock experienced
     an unusual price movement. Prefer this tool over searching for news manually,
@@ -95,20 +95,40 @@ def get_article_context(symbol: str, start_date: date, end_date: date, col:str =
             - True: only flag significant increases (user asked about rallies/spikes/gains)
             - False: only flag significant decreases (user asked about drops/crashes/losses)
             - None: flag both directions (default — use for general "what happened" queries)
+        limit: Maximum number of significant dates to search news for. Defaults to 10.
         window: Number of calendar days before and after each significant date to
             search for related news. Defaults to 2.
 
     Returns:
-        A DataFrame of relevant news articles. Each article includes publication
-        details, article content, and metadata describing the associated
-        significant stock movement(s), including the event date, percentage price
-        change, and the number of days between the article and the market event.
+        On success: a DataFrame of news articles, each including publication details,
+        article content, and a "linked_info" field listing the nearby significant
+        price move(s) — event date, signed percent change, and days between the
+        article and the event.
+
+        On failure: a dict with "status" and "error" keys instead of a DataFrame.
+        Always check for a dict return before treating the result as a DataFrame.
+
+    ERROR HANDLING (check "status" field when the return is a dict, not a DataFrame):
+        - status == "Failed", error mentions "No rows":
+          This symbol has no stock price data for the given date range in our system.
+          Tell the user this stock/date range isn't available, and suggest a
+          different symbol or a more recent date range. Do NOT tell the user to
+          "update the database" — that is a developer action, not something they can do.
+        - status == "Empty":
+          This is a normal result, not an error. It means no statistically unusual
+          price movements were detected in this period. Tell the user the stock
+          moved within its normal range and no major catalyst-driving events were
+          found — offer to check a wider date range if they want more context.
+        - Any other unexpected exception surfaced by the tool framework:
+          Briefly tell the user the lookup failed and suggest trying again.
     """
     df_stock = sl.get_stock(symbol, start_date, end_date)
     if len(df_stock) == 0:
         return {"status": "Failed", "error": "No rows."}
     sig = sl.adaptive_sig(start_date, end_date)
     df_sig_dates = sl.spot_significant_dates(df_stock, col, limit = limit, sig = sig, increase = increase)
+    if len(df_sig_dates) == 0:
+        return {"status": "Empty", "error": "No significant price movements found in this period."}
     news_arr = []
     for i, v in enumerate(df_sig_dates.itertuples()):
         start_date = (v.date - timedelta(days=window)).date()
@@ -128,8 +148,7 @@ def get_article_context(symbol: str, start_date: date, end_date: date, col:str =
             nl.upsert_articles(symbol, complete_news)
             # GET THE ARTICLE
             news = nl.get_articles(symbol, start_date, end_date)
-        else:
-            news_arr.append(news)
+        news_arr.append(news)
     # ATTACH CHANGES TO THE ARTICLES
     flat_news = [article for sublist in news_arr for article in sublist]
     df_news = pd.DataFrame(flat_news)
