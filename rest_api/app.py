@@ -98,11 +98,9 @@ def get_stock(symbol: str, date_start: date, date_end: date):
     # convert pandas DataFrame to JSON-serializable list of dicts
     if isinstance(result, pd.DataFrame):
         df = result.reset_index()
-        # df = df.astype(object)
         # replace NaN (and other missing values) with None so JSON encoder accepts them
         df = df.where(pd.notnull(df), None)
         records = df.to_dict(orient="records")
-
         def convert(v):
             if pd.isna(v):
                 return None
@@ -115,11 +113,9 @@ def get_stock(symbol: str, date_start: date, date_end: date):
             if isinstance(v, (pd.Timestamp, _datetime)):
                 return v.isoformat()
             return v
-
         for r in records:
             for k, v in list(r.items()):
                 r[k] = convert(v)
-
         return records
     # fallback
     return result
@@ -155,4 +151,3 @@ def update_stock(symbol: str, date_start: date, date_end: date):
         return get_stock(symbol, date_start, date_end)
     except Exception as e:
         return {"status": "error", "error": str(e)}
-
