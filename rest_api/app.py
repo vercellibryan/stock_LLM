@@ -98,11 +98,14 @@ def get_stock(symbol: str, date_start: date, date_end: date):
     # convert pandas DataFrame to JSON-serializable list of dicts
     if isinstance(result, pd.DataFrame):
         df = result.reset_index()
+        # df = df.astype(object)
         # replace NaN (and other missing values) with None so JSON encoder accepts them
         df = df.where(pd.notnull(df), None)
         records = df.to_dict(orient="records")
 
         def convert(v):
+            if pd.isna(v):
+                return None
             if isinstance(v, (np.integer,)):
                 return int(v)
             if isinstance(v, (np.floating,)):

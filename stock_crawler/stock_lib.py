@@ -98,7 +98,7 @@ def upsert_company(company: dict):
         return {"status": "Upsert failed", "error": str(exc)}
 
 # SELECT DATA
-def get_stock(symbol: str, date_start: date, date_end: date):
+def get_stock(symbol: str, date_start: date, date_end: date, column: str = "close"):
     sql = """
     SELECT * FROM stock
     WHERE symbol = ? AND date BETWEEN ? AND ?
@@ -107,6 +107,8 @@ def get_stock(symbol: str, date_start: date, date_end: date):
     try:
         with get_db_connection() as conn:
             df = pd.read_sql_query(sql, conn, params=(symbol, date_start, date_end), parse_dates=["date"])
+            # add pct_change()
+            df["percent_change_"+column] = df[column].pct_change()
             return df
     except sqlite3.DatabaseError as exc:
         return {"status": "Query failed", "error": str(exc)}
@@ -141,35 +143,35 @@ def spot_significant_dates(df_stock: pd.DataFrame, column:str = "close", mean:bo
     if column not in df_stock.columns:
         return {"status": "Failed", "error": "Column name doesn't exist"}
     # add percentage change
-    df_stock["percent_change"] = df_stock[column].pct_change()
-    df_stock["percent_increase"] = df_stock["percent_change"] >= 0
+    # df_stock["percent_change_"+column] = df_stock[column].pct_change()
+    df_stock["percent_increase_"+column] = df_stock["percent_change_"+column] >= 0
     # do descriptive statistic
     df_desc = df_stock.describe()
     center = upper_range = lower_range = 0.0
     if mean:
-        std_dev = df_desc.loc["std", "percent_change"]
-        center = df_desc.loc["mean", "percent_change"]
+        std_dev = df_desc.loc["std", "percent_change_"+column]
+        center = df_desc.loc["mean", "percent_change_"+column]
         lower_range = center - (sig*std_dev)
         upper_range = center + (sig*std_dev)
     else:
-        center = df_desc.loc["50%", "percent_change"]
-        q1 = df_desc.loc["25%", "percent_change"]
-        q3 = df_desc.loc["75%", "percent_change"]
+        center = df_desc.loc["50%", "percent_change_"+column]
+        q1 = df_desc.loc["25%", "percent_change_"+column]
+        q3 = df_desc.loc["75%", "percent_change_"+column]
         iqr = q3 - q1
         sigma_est = iqr / 1.349
         lower_range = center - sig * sigma_est
         upper_range = center + sig * sigma_est
     #
     filtered = df_stock[
-        (df_stock["percent_change"] < lower_range) | 
-        (df_stock["percent_change"] > upper_range)
+        (df_stock["percent_change_"+column] < lower_range) | 
+        (df_stock["percent_change_"+column] > upper_range)
     ]
     # 
     if increase is True:
-        filtered = filtered[filtered["percent_increase"] == True]
+        filtered = filtered[filtered["percent_increase_"+column] == True]
     elif increase is False:
-        filtered = filtered.loc[filtered["percent_increase"] == False].copy()
-    filtered.loc[:, "percent_change"] = filtered["percent_change"].abs()
+        filtered = filtered.loc[filtered["percent_increase_"+column] == False].copy()
+    filtered.loc[:, "percent_change_"+column] = filtered["percent_change_"+column].abs()
     # make sure that there are not too many rows
-    filtered = filtered.sort_values(by="percent_change", ascending=False)
+    filtered = filtered.sort_values(by="percent_change_"+column, ascending=False)
     return filtered.iloc[:limit]
