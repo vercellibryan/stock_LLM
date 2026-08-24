@@ -165,7 +165,7 @@ def get_article_context(symbol: str, start_date: date, end_date: date, col:str =
         return [
             {
                 "date": str(d.date()),
-                "percent_change": row["percent_change"] * (-1 if not row["percent_increase"] else 1),
+                "percent_change": row["percent_change_"+col] * (-1 if not row["percent_increase_"+col] else 1),
                 "days_from_publish": (article_date - d).days,
             }
             for d, row in in_window.iterrows()
