@@ -11,13 +11,23 @@ DB_PATH = Path("../stocks.db")
 
 # CRAWL FUNCTIONS
 def crawl_stock(symbol:str, start_date: date, end_date: date):
-    stock_hist = yf.Ticker(symbol).history(start=start_date, end=end_date)
-    # stock_hist["percent_change"] = stock_hist["Close"].pct_change()
-    return stock_hist
+    try:
+        ticker = yf.Ticker(symbol)
+        _ = ticker.fast_info.get("currency")
+        stock_hist = ticker.history(start=start_date, end=end_date)
+        if(stock_hist.empty):
+            return {"status": "Empty", "error": "Data doesn't exist within this timerange."}
+        return stock_hist
+    except Exception as e:
+        return {"status": "Error", "error": "Symbol doesn't exist."}
 
 def crawl_company(symbol:str):
-    company = yf.Ticker(symbol).info
-    return company
+    try:
+        ticker = yf.Ticker(symbol)
+        _ = ticker.fast_info.get("currency")
+        return ticker.info
+    except Exception as e:
+        return {"status": "Error", "error": "Symbol doesn't exist."}
 
 # DB FUNCTIONS
 def get_db_connection():
@@ -122,6 +132,20 @@ def get_company(symbol: str):
             conn.row_factory = sqlite3.Row
             cur = conn.cursor()
             cur.execute(sql, (symbol,))
+            rows = cur.fetchall()
+            return [dict(row) for row in rows]
+    except sqlite3.DatabaseError as exc:
+        return {"status": "Query failed", "error": str(exc)}
+
+def list_company():
+    sql = """
+        SELECT * FROM company ORDER BY name ASC;
+        """
+    try:
+        with get_db_connection() as conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            cur.execute(sql)
             rows = cur.fetchall()
             return [dict(row) for row in rows]
     except sqlite3.DatabaseError as exc:

@@ -1,82 +1,552 @@
 <html>
     <head>
-  <meta charset="UTF-8">
-  <title>Stock Agent</title>
-  <!-- Tailwind & DaisyUI -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" type="text/css" />
-  
-  <!-- Working Marked CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
-</head>
+        <meta charset="UTF-8">
+        <title>Stock Agent</title>
+        <!-- Tailwind & DaisyUI -->
+        <script src="https://cdn.tailwindcss.com"></script>
+        <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" type="text/css" />
+        
+        <!-- Register DaisyUI with the Tailwind CDN -->
+        <script>
+            tailwind.config = {
+                // Leave plugins empty for the browser CDN setup
+                theme: {
+                extend: {}
+                }
+            }
+        </script>
+
+        <!-- Working Marked CDN -->
+        <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+        <!-- Alphine.js -->
+        <!-- <script defer src="{{ url_for('static', filename='alpine.min.js') }}"></script> -->
+        <style>
+            /* Force headers to stand out */
+            .agent-content h1, 
+            .agent-content h2, 
+            .agent-content h3 {
+            font-size: 1.25rem !important;
+            font-weight: 700 !important;
+            margin-top: 1.25rem !important;
+            margin-bottom: 0.5rem !important;
+            display: block !important;
+            }
+
+            /* Force bullet points to render with left indentation and dots */
+            .agent-content ul {
+            list-style-type: disc !important;
+            padding-left: 1.5rem !important;
+            margin-top: 0.5rem !important;
+            margin-bottom: 0.5rem !important;
+            }
+
+            .agent-content li {
+            margin-bottom: 0.25rem !important;
+            display: list-item !important;
+            }
+        </style>
+    </head>
     <body>
-        <div class="h-screen flex flex-col max-w-2xl mx-auto p-4">
-            <!-- Chat Log Box -->
-            <div id="chat-box" class="flex-1 overflow-y-auto space-y-6 p-4">
-                <!-- Initial Agent Greeting -->
-                <div class="flex items-start gap-3">
-                <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center font-bold text-xs">AI</div>
-                <div class="prose max-w-none text-base-content flex-1 pt-1">
-                    Hello! How can I help you analyze stock performance today?
+        <!-- LOADING MODAL -->
+        <dialog id="loading_modal" class="modal">
+            <div class="modal-box max-w-md p-6 bg-base-100 rounded-2xl shadow-md border border-base-300">
+                <!-- Content Container -->
+                <div class="flex flex-col items-center text-center space-y-4 py-2">
+                    <!-- DaisyUI Loading Spinner -->
+                    <span class="loading loading-spinner loading-lg text-primary"></span>
+                    <!-- Module Title / Status Header -->
+                    <h2 id="loading_modal_title" class="text-lg font-bold text-base-content">
+                        Initializing Session...
+                    </h2>
+                    <!-- Context / Progress Details -->
+                    <div class="form-control w-full">
+                        <p id="loading_modal_msg" class="text-sm text-base-content/80 leading-relaxed">
+                            Setting up context and connecting to server...
+                        </p>
+                    </div>
                 </div>
+            </div>
+            <!-- Backdrop (Static overlay - no button form inside so clicking outside won't close it while loading) -->
+            <div class="modal-backdrop bg-black/50"></div>
+        </dialog>
+        <!-- WARNING MODAL -->
+        <dialog id="error_modal" class="modal">
+            <div class="modal-box max-w-md p-6 bg-base-100 rounded-2xl shadow-md border border-base-300">
+                <!-- Close Button (X in corner) -->
+                <form method="dialog">
+                    <button class="btn btn-sm btn-circle btn-ghost absolute right-3 top-3">✕</button>
+                </form>
+
+                <!-- Module Title / Header with Error Icon -->
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-error/10 text-error">
+                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                        </svg>
+                    </div>
+                    <h2 id="error_modal_title" class="text-lg font-bold text-base-content">Error</h2>
+                </div>
+
+                <!-- Content -->
+                <div class="space-y-4">
+                    <!-- Error Message Body -->
+                    <div class="form-control w-full">
+                        <p id="error_modal_msg" class="text-sm text-base-content/80 leading-relaxed"></p>
+                    </div>
+
+                    <!-- Submit Action / Dismiss -->
+                    <div class="pt-2">
+                        <form method="dialog">
+                            <button id="btn_error_dismiss" class="btn btn-error w-full rounded-lg text-white">
+                                Dismiss
+                            </button>
+                        </form>
+                    </div>
                 </div>
             </div>
 
-            <!-- Input Form -->
-            <form id="chat-form" class="flex gap-2 mt-4">
-                <input type="text" id="symbol" value="NVDA" class="input input-bordered w-24" placeholder="Symbol" required />
-                <input type="text" id="msg" class="input input-bordered flex-1" placeholder="Type a message..." required />
-                <button type="submit" class="btn btn-primary">Send</button>
+            <!-- Backdrop (Click outside to close) -->
+            <form method="dialog" class="modal-backdrop">
+                <button>close</button>
             </form>
+        </dialog>
+        <!-- MODAL -->
+        <dialog id="session_modal" class="modal">
+            <div class="modal-box max-w-md p-6 bg-base-100 rounded-2xl shadow-md border border-base-300">
+                <!-- Close Button (X in corner) -->
+                <form method="dialog">
+                    <button class="btn btn-sm btn-circle btn-ghost absolute right-3 top-3">✕</button>
+                </form>
+
+                <!-- Module Title -->
+                <h2 class="text-lg font-bold text-base-content mb-4">Session Parameters</h2>
+
+                <!-- Form Content -->
+                <div class="space-y-4">
+                    <!-- Input Field -->
+                    <div class="form-control w-full">
+                        <label class="label">
+                            <span class="label-text font-medium text-base-content/80">Stock Symbol / Query</span>
+                        </label>
+                        <input 
+                            type="text"
+                            id="input_symbol"
+                            list="company_list" 
+                            placeholder="e.g. NVDA, AAPL"
+                            class="input input-bordered w-full rounded-lg focus:outline-none focus:border-primary" 
+                        />
+                        <!-- ERROR MSG -->
+                        <label id="err_label_symbol" class="label" hidden="true">
+                            <span id="err_span_symbol" class="label-text-alt text-error font-medium">Please enter or select a stock symbol.</span>
+                        </label>
+                        <!-- COMPANY LIST -->
+                        <datalist id="company_list">
+                        </datalist>
+                    </div>
+
+                    <!-- Date Picker Field -->
+                    <div class="form-control w-full space-y-1">
+                        <label class="label">
+                            <span class="label-text font-medium text-base-content/80">Date Range</span>
+                        </label>
+                        
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <!-- From Date -->
+                            <div class="flex flex-col gap-1">
+                                <span class="text-xs text-base-content/60 font-medium pl-1">From</span>
+                                <input 
+                                    type="date" 
+                                    id="input_date_from"
+                                    name="date_from"
+                                    class="input input-bordered w-full rounded-lg text-base-content focus:outline-none focus:border-primary text-sm" 
+                                />
+                            </div>
+
+                            <!-- To Date -->
+                            <div class="flex flex-col gap-1">
+                                <span class="text-xs text-base-content/60 font-medium pl-1">To</span>
+                                <input 
+                                    type="date" 
+                                    id="input_date_to"
+                                    name="date_to"
+                                    class="input input-bordered w-full rounded-lg text-base-content focus:outline-none focus:border-primary text-sm" 
+                                />
+                            </div>
+                        </div>
+                        <!-- Error label -->
+                        <label id="err_label_date" class="label hidden">
+                            <span id="err_span_date" class="label-text-alt text-error font-medium">Date error.</span>
+                        </label>
+                    </div>
+
+                    <!-- Submit Action -->
+                    <div class="pt-2">
+                        <button id="btn_new_conv" @click="if (!symbol.trim()) { error = true } else { /* submit logic */ }" class="btn btn-primary w-full rounded-lg">
+                            Fetch
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Backdrop (Click outside to close) -->
+            <form method="dialog" class="modal-backdrop">
+                <button>close</button>
+            </form>
+        </dialog>
+        
+        <div class="flex flex-col h-screen w-full">
+            <!-- SIDEBAR -->
+            <div class="drawer">
+                <!-- hamburger icon -->
+                <input for="my-drawer" id="checkbox" class="drawer-toggle" />
+
+                <!-- MAIN CONTENT -->
+                <div class="drawer-content p-1">
+                    <!-- TRIGGER BUTTON -->
+                    <label for="my-drawer" class="btn btn-square btn-ghost cursor-pointer">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-5 h-5 stroke-current">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                    </svg>
+                    </label>
+                </div>
+
+                <!-- SIDEBAR CONTAINER -->
+                <div class="drawer-side z-40">
+                    <label for="my-drawer" aria-label="close sidebar" class="drawer-overlay"></label>
+                    <aside class="bg-base-200 text-base-content min-h-full w-64 p-4 border-r border-base-300">
+                        <div class="text-xl font-bold px-2 py-3 border-b border-base-300 mb-4">
+                            SCAG-JPT
+                        </div>
+                        <a class="w-full btn flex items-center justify-center gap-2" onclick="session_modal.showModal()">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                            </svg>
+                            <span>New Conversation</span>
+                        </a>
+                        <!-- ITEMS -->
+                        <div class="px-3 mt-6 mb-2 text-xs font-semibold uppercase tracking-wider text-base-content/50">
+                            Conversations
+                        </div>
+                        <div id="conv_box" class="w-full h-[72.5vh] bg-base-200 overflow-y-auto space-y-4 pr-2">
+                            <!-- Active Item (Highlighted by default + darker highlight on hover) -->
+                            <button class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-full text-base-content/80 hover:bg-base-300 transition-colors">
+                                <span class="truncate text-left flex-1">NVIDIA</span>
+                            </button>
+
+                            <!-- Inactive Item 1 (Highlights on hover) -->
+                            <button class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-full text-base-content/80 hover:bg-base-300 transition-colors">
+                                <span class="truncate text-left flex-1">META</span>
+                            </button>
+
+                            <!-- Inactive Item 2 (Highlights on hover) -->
+                            <button class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-full text-base-content/80 hover:bg-base-300 transition-colors">
+                                <span class="truncate text-left flex-1">Apple</span>
+                            </button>
+                        </div>
+                    </aside>
+                </div>
+            </div>
+            <!-- STUFFS -->
+            <div class="flex flex-1 overflow-hidden p-2 gap-4 bg-base-100">
+                <!-- VISUAL STUFFS -->
+                <div class="w-3/4 h-full bg-base-200 rounded-xl p-6">taek1</div>
+                <!-- CHATBOX -->
+                <div class="w-1/4 h-full bg-base-200 rounded-xl p-6 scroll-smooth">
+                    <div class="w-full pb-4 border-b border-base-300 flex items-center justify-between shrink-0">
+                        <div class="flex items-center gap-3">
+                            <h2 class="font-bold text-base leading-tight">Scag-JPT</h2>
+                        </div>
+                    </div>
+                    <div id="chat_box" class="w-full h-[72.5vh] bg-base-200 overflow-y-auto space-y-4 pr-2">
+                        <!-- CONVERSATIONS GOES HERE -->
+                    </div>
+                    <!-- Input Section Container (Must be w-full) -->
+                    <div class="w-full mt-4 shrink-0">
+                        <label class="block text-sm font-medium mb-2 text-base-content/80">Message</label>
+                        
+                        <!-- Flex row for dynamic sizing -->
+                        <div class="flex w-full gap-2 items-center">
+                            <!-- flex-1 min-w-0 forces true fluid width -->
+                            <input 
+                                id="chat_input"
+                                type="text" 
+                                placeholder="type stuffs"
+                                class="flex-1 min-w-0 w-full px-4 py-3 rounded-xl bg-base-100 border border-base-300 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition" />   
+                            <button id="btn_submit_chat" type="submit" class="btn btn-primary rounded-xl px-5 h-[48px] shrink-0">
+                                Send
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
+        <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
         <script>
-            const form = document.getElementById('chat-form');
-            const chatBox = document.getElementById('chat-box');
+            marked.setOptions({
+                gfm: true,
+                breaks: true
+            });
+            var curr_comp = '';
+            const chat_box = document.getElementById('chat_box');
+            const chat_input = document.getElementById('chat_input');
 
-            form.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const symbol = document.getElementById('symbol').value;
-            const msg = document.getElementById('msg').value;
-
-            // 1. User Message: Styled inside a pill-shaped chat bubble on the right
-            chatBox.innerHTML += `
-                <div class="flex justify-end my-4">
-                <div class="bg-primary text-primary-content px-5 py-3 rounded-3xl max-w-lg shadow-sm">
-                    ${msg}
-                </div>
-                </div>`;
-            
-            // 2. Agent Response: Plain background with icon on the left (Gemini Layout)
-            const botContentId = 'bot-text-' + Date.now();
-            chatBox.innerHTML += `
-                <div class="flex items-start gap-3 my-4">
-                <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center font-bold text-xs shrink-0">AI</div>
-                <div class="prose max-w-none text-base-content flex-1 pt-1" id="${botContentId}">
-                    <span class="loading loading-dots loading-sm"></span>
-                </div>
-                </div>`;
-            
-            document.getElementById('msg').value = '';
-            chatBox.scrollTop = chatBox.scrollHeight;
-
-            // 3. SSE Stream handling with real-time Markdown rendering
-            const botElement = document.getElementById(botContentId);
-            let rawMarkdown = '';
-            
-            const source = new EventSource(`/chat?symbol=${encodeURIComponent(symbol)}&msg=${encodeURIComponent(msg)}`);
-
-           source.onmessage = (event) => {
-                // Convert the escaped '\\n' back into real newlines for marked.js
-                const unescapedChunk = event.data.replace(/\\n/g, '\n');
-                rawMarkdown += unescapedChunk;
-                const parseMarkdown = typeof marked === 'function' ? marked : marked.parse;
-                botElement.innerHTML = parseMarkdown(rawMarkdown);
+            function scrollToBottom() {
+                const chatBox = document.getElementById('chat-box');
                 chatBox.scrollTop = chatBox.scrollHeight;
-            };
+            }
 
-            source.onerror = () => {
-                source.close();
-            };
+            // Helper function to prevent XSS injection
+            function escapeHTML(str) {
+                return str.replace(/[&<>'"]/g, 
+                    tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+                );
+            }
+            
+            async function loadHistory(symbol) {
+                const chatBox = document.getElementById('chat_box');
+                chatBox.innerHTML = ''; // Clear temporary state
+
+                try {
+                    const res = await fetch(`/history?symbol=${encodeURIComponent(symbol)}`);
+                    const messages = await res.json();
+
+                    messages.forEach(msg => {
+                        if (msg.role === 'user') {
+                            renderUserMessage(msg.content);
+                        } else if (msg.role === 'assistant') {
+                            renderAgentMessage(msg.content);
+                        }
+                    });
+
+                    // Scroll to bottom after loading
+                    chatBox.scrollTop = chatBox.scrollHeight;
+                } catch (err) {
+                    console.error('Failed to load chat history:', err);
+                }
+            }
+            
+            async function loadCompaniesList(){
+                try{
+                    const response = await fetch('/list_company');
+                    const companies = await response.json();
+                    
+                    const datalist = document.getElementById('company_list');
+                    datalist.innerHTML = ''; // Clear existing options
+
+                    companies.forEach(company => {
+                        const option = document.createElement('option');
+                        option.value = company.symbol; // Target value populated on selection
+                        option.textContent = company.name; // Display label
+                        datalist.appendChild(option);
+                    });
+                } catch (error){
+                    console.error("Error loading companies into datalist:", error);
+                }
+            }
+
+            function renderUserMessage(text) {
+                const chatBox = document.getElementById('chat_box');
+                const userDiv = document.createElement('div');
+                userDiv.className = 'chat chat-end';
+                userDiv.innerHTML = `
+                    <div class="max-w-[85%] bg-base-300 text-base-content rounded-2xl px-4 py-3 text-sm break-words">
+                        ${escapeHTML(text)}
+                    </div>
+                `;
+                chatBox.appendChild(userDiv);
+            }
+
+            function renderAgentMessage(markdownText) {
+                const chatBox = document.getElementById('chat_box');
+                const agentDiv = document.createElement('div');
+                agentDiv.className = 'chat chat-start';
+                
+                // Convert saved markdown to HTML using marked.js
+                const parsedHtml = marked.parse(markdownText);
+
+                agentDiv.innerHTML = `
+                    <div class="agent-content flex-1 text-sm leading-relaxed text-base-content space-y-2 px-4 py-3">
+                        ${parsedHtml}
+                    </div>
+                `;
+                chatBox.appendChild(agentDiv);
+            }
+
+            const btn_submit_chat = document.getElementById('btn_submit_chat')
+            btn_submit_chat.addEventListener('click', async function() {
+                const text = chat_input.value.trim();
+                if (text !== "") {
+                    // DISPLAY USER'S REQUEST
+                    const new_tag = document.createElement('div');
+                    new_tag.className = 'flex justify-end';
+                    new_tag.innerHTML = `
+                        <div class="max-w-[85%] bg-base-300 text-base-content rounded-2xl px-4 py-3 text-sm break-words">
+                            ${escapeHTML(text)}
+                        </div>
+                    `;
+                    chat_box.appendChild(new_tag);
+                    chat_box.scrollTop = chat_box.scrollHeight;
+                    chat_input.value = "";
+                    // AGENT'S BOX
+                    const agentTag = document.createElement('div');
+                    agentTag.className = 'agent-content flex-1 text-sm leading-relaxed text-base-content space-y-2 px-4 py-3'
+                    agentTag.innerHTML = `
+                        <span class="opacity-50 animate-pulse">Thinking...</span>
+                    `;
+                    chat_box.append(agentTag);
+                    chat_box.scrollTop = chat_box.scrollHeight;
+                    // const agentContentDiv = agentTag.querySelector('.agent-content');
+
+                    // SEND REQUEST POST REQ TO FLASK
+                    try {
+                        const response = await fetch('http://127.0.0.1:5000/chat', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                symbol: curr_comp,
+                                message: text})
+                        });
+                        if (!response.ok) throw new Error('Network response was not ok');
+
+                        // STREAM RESPONSE
+                        const reader = response.body.getReader();
+                        const decoder = new TextDecoder('utf-8');
+                        let accumulatedMarkdown = "";
+                        agentTag.innerHTML = "";
+
+                        while (true){
+                            const {done, value} = await reader.read();
+                            if(done) break;
+
+                            accumulatedMarkdown += decoder.decode(value, {stream: true});
+                            agentTag.innerHTML = marked.parse(accumulatedMarkdown);
+                            chat_box.scrollTop = chat_box.scrollHeight;
+                        }
+                    } catch(error){
+                        console.error("API Error:", error);
+                        agentContentDiv.innerHTML = `<span class="text-error">Failed to connect to API.</span>`;
+                    }
+                }
+            });
+
+            // SYMBOL MODAL FUNCTION
+            const input_symbol = document.getElementById('input_symbol');
+            const err_label = document.getElementById('err_label_symbol');
+            const span_label = document.getElementById('err_span_symbol');
+            function errorSymbolLabel(msg){
+                input_symbol.classList.add('input-error');
+                err_label.classList.remove('hidden');
+                err_label.hidden = false;
+                span_label.textContent = msg;
+            }
+            function clearErrorSymbolLabel(){
+                input_symbol.classList.remove('input-error');
+                err_label.classList.add('hidden');
+                err_label.hidden = true;
+            }
+            input_symbol.addEventListener('input', async function () {
+                if (!input_symbol || !err_label) return;
+                const symbol = input_symbol.value.trim();
+                // Check if empty OR exceeds 6 characters
+                if (symbol.length === 0) {
+                    errorSymbolLabel("Stock symbol can't be empty.");
+                } else if(symbol.length > 6){
+                    errorSymbolLabel("Enter a valid stock symbol.");
+                } else {
+                    clearErrorSymbolLabel();
+                }
+            });
+
+            // DATE PICKER MODAL FUNCTIONS
+            const input_date_from = document.getElementById('input_date_from');
+            const input_date_to = document.getElementById('input_date_to');
+            const err_label_date = document.getElementById('err_label_date');
+            const err_span_date = document.getElementById('err_span_date');
+            function errorLabelDate(msg){
+                input_date_from.classList.add('input-error');
+                input_date_to.classList.add('input-error');
+                err_span_date.textContent = msg;
+                err_label_date.classList.remove('hidden');
+            }
+            function clearErrorLabelDate(){
+                input_date_from.classList.remove('input-error');
+                input_date_to.classList.remove('input-error');
+                err_label_date.classList.add('hidden');
+            }
+            function validateDateRange() {
+                const date_from = input_date_from.value;
+                const date_to = input_date_to.value;
+                if(!input_date_from || !input_date_to) return false;
+
+                if (!date_from || !date_to) {
+                    // error stuffs
+                    errorLabelDate("Both 'From' and 'To' dates are required.");
+                    return false;
+                }
+                
+                if(date_from > date_to){
+                    // error stuffs
+                    errorLabelDate("'From' date cannot be later than 'To' date.");
+                    return false;
+                }
+                // if everything is alright
+                clearErrorLabelDate();
+                return true;
+            }
+            input_date_from.addEventListener('change', validateDateRange);
+            input_date_to.addEventListener('change', validateDateRange);
+
+            // SUBMIT STUFFS
+            const loading_modal = document.getElementById('loading_modal');
+            const session_modal = document.getElementById('session_modal');
+            const btn_new_conv = document.getElementById('btn_new_conv');
+            btn_new_conv.addEventListener('click', async function() {
+                const date_from = input_date_from.value;
+                const date_to = input_date_to.value;
+                const symbol = input_symbol.value;
+                // checker
+                var err_free = true;
+                if(!date_from || !date_to){
+                    errorLabelDate("Both 'From' and 'To' dates are required.");
+                    err_free = false;
+                }
+                console.log(symbol.trim().length);
+                if(symbol.trim().length === 0){
+                    errorSymbolLabel("Stock symbol can't be empty.");
+                    err_free = false;
+                }
+                // SET THE STATE
+                if(!err_free) return false;
+                // ADD EXCEPTION
+                try{
+                    curr_comp = symbol;
+                    console.log("PLEASE WAIT");
+                    session_modal.close();
+                    loading_modal.showModal();
+                    const response = await fetch('http://127.0.0.1:5000/state', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            symbol: curr_comp
+                        })
+                    });
+                    console.log("DONE!");
+                    loading_modal.close();
+                } catch(error){
+                    curr_comp = "";
+                    console.log("ERROR");
+                    console.error("Error:", error);
+                }
+            });
+
+            // LOAD FUNCTIONS
+            document.addEventListener('DOMContentLoaded', () => {
+                loadHistory(curr_comp);
+                loadCompaniesList();
             });
         </script>
     </body>

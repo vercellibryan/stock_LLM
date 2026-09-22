@@ -2,13 +2,10 @@ from pathlib import Path
 import sys
 from datetime import date, timedelta
 import pandas as pd
-
 sys.path.append(str(Path.cwd().parent / "stock_crawler"))
 import stock_lib as sl
-
 sys.path.append(str(Path.cwd().parent / "news_crawler"))
 import news_lib as nl
-
 from langchain.tools import tool
 
 # LIST OF SITES
@@ -64,7 +61,7 @@ def spot_significant_dates(symbol: str, start_date: date, end_date: date, column
     df_stock = sl.get_stock(symbol, start_date, end_date)
     if len(df_stock) == 0:
         return {"status": "Failed", "error": "No rows."}
-    return sl.spot_significant_dates(df_stock, column, mean, sig, limit, increase)
+    return sl.spot_significant_dates(df_stock, column, mean, sig, limit, increase).to_json()
 
 # FETCH NEWS BASED OF DATES
 FINANCE_PUBLISHERS = ["finance.yahoo.com", "benzinga.com"]
@@ -171,5 +168,5 @@ def get_article_context(symbol: str, start_date: date, end_date: date, col:str =
             for d, row in in_window.iterrows()
         ]
     df_news["linked_info"] = df_news["date"].apply(get_linked_info)
-    return df_news
+    return df_news.to_json()
 
